@@ -20,17 +20,40 @@ baust du selbst.
 
 ---
 
+## Schnellstart (für Erfahrene)
+
+```
+# Auf dem Proxmox-Host (optional, legt eine Debian-13-VM an):
+curl -fsSLO https://raw.githubusercontent.com/DevLunaris/dev-portal-template/main/create-vm.sh
+bash create-vm.sh
+
+# In der VM (Debian 13, Benutzer mit sudo):
+sudo apt-get update && sudo apt-get install -y git
+git clone https://github.com/DevLunaris/dev-portal-template.git mein-projekt
+cd mein-projekt && ./bootstrap.sh
+
+# Danach ins eigene, leere Repo pushen:
+git remote set-url origin https://github.com/<DU>/<DEIN-REPO>.git
+git push -u origin main
+```
+
+Reverse Proxy: Dev-Domain → `VM-IP:8000` (mit Login schützen, Websockets an),
+App-Domain → `VM-IP:8080`. Ausführlich: siehe unten.
+
+---
+
 ## Inhalt
 
-1. [Wie das Ganze aufgebaut ist](#wie-das-ganze-aufgebaut-ist)
-2. [Voraussetzungen](#voraussetzungen)
-3. [Einrichtung Schritt für Schritt](#einrichtung-schritt-für-schritt)
-4. [Reverse Proxy einrichten](#reverse-proxy-einrichten)
-5. [Täglich damit arbeiten](#täglich-damit-arbeiten)
-6. [Lokal ohne VM entwickeln (optional)](#lokal-ohne-vm-entwickeln-optional)
-7. [Projektstruktur](#projektstruktur)
-8. [Sicherheit](#sicherheit)
-9. [Fehlerbehebung](#fehlerbehebung)
+1. [Schnellstart (für Erfahrene)](#schnellstart-für-erfahrene)
+2. [Wie das Ganze aufgebaut ist](#wie-das-ganze-aufgebaut-ist)
+3. [Voraussetzungen](#voraussetzungen)
+4. [Einrichtung Schritt für Schritt](#einrichtung-schritt-für-schritt)
+5. [Reverse Proxy einrichten](#reverse-proxy-einrichten)
+6. [Täglich damit arbeiten](#täglich-damit-arbeiten)
+7. [Lokal ohne VM entwickeln (optional)](#lokal-ohne-vm-entwickeln-optional)
+8. [Projektstruktur](#projektstruktur)
+9. [Sicherheit](#sicherheit)
+10. [Fehlerbehebung](#fehlerbehebung)
 
 ---
 
@@ -73,19 +96,15 @@ kopieren, einfügen und ein paar Fragen beantworten.
 
 ### Schritt 1: VM auf Proxmox anlegen
 
+Hast du schon eine Debian-13-VM (oder einen Debian-13-Rechner), überspringe
+diesen Schritt.
+
 1. Öffne in Proxmox die Shell des Hosts (im Webinterface links den Server
    anklicken, dann oben rechts **Shell**).
-2. Bring `create-vm.sh` auf den Host, zum Beispiel per `scp` von deinem PC:
+2. Lade das Skript herunter und starte es:
 
    ```
-   scp create-vm.sh root@<IP-DEINES-PROXMOX>:/root/
-   ```
-
-   oder lege in der Proxmox-Shell mit `nano create-vm.sh` eine Datei an und
-   füge den Inhalt ein (speichern mit `Strg+O`, `Enter`, beenden mit `Strg+X`).
-3. Starte das Skript:
-
-   ```
+   curl -fsSLO https://raw.githubusercontent.com/DevLunaris/dev-portal-template/main/create-vm.sh
    bash create-vm.sh
    ```
 
@@ -101,60 +120,37 @@ kopieren, einfügen und ein paar Fragen beantworten.
    `C:\Users\<du>\.ssh\id_ed25519.pub` auf den Host kopieren und den Pfad
    angeben.
 
-4. Am Ende zeigt das Skript **MAC-Adresse** und **IP-Adresse** der VM an.
+3. Am Ende zeigt das Skript **MAC-Adresse** und **IP-Adresse** der VM an.
 
 ### Schritt 2: Feste IP im Router reservieren
 
-Damit die VM immer dieselbe Adresse bekommt, im Router (z. B. Fritzbox
-oder Router des Providers) unter DHCP für die angezeigte MAC-Adresse eine feste IP reservieren.
-Bei einer festen IP aus Schritt 1 entfällt das.
+Damit die VM immer dieselbe Adresse bekommt, im Router (z. B. Fritzbox oder
+Router des Providers) unter DHCP für die angezeigte MAC-Adresse eine feste
+IP reservieren. Bei einer festen IP aus Schritt 1 entfällt das.
 
 ### Schritt 3: In die VM einloggen und git installieren
 
+Auf deinem PC (Windows: PowerShell):
+
 ```
 ssh debian@<IP-DER-VM>
+```
+
+(`debian` ist der Standardbenutzer aus Schritt 1.) Dann in der VM:
+
+```
 sudo apt-get update && sudo apt-get install -y git
 ```
 
-(`debian` ist der Standardbenutzer aus Schritt 1.)
-
-### Schritt 4: Eigenes Repo auf GitHub anlegen
-
-**Variante A, du hast Zugriff auf die Vorlage auf GitHub:** Vorlage öffnen →
-grüner Button **Use this template** → *Create a new repository* → Name
-eingeben, **Private** wählen → *Create repository*.
-
-**Variante B, du hast die Vorlage als ZIP:** Auf GitHub ein neues, privates
-Repository anlegen, auf der leeren Repo-Seite *uploading an existing file*
-anklicken und den entpackten Inhalt der ZIP hochladen (auch die Ordner
-`.vscode` und die Dateien `.gitignore`, `.env.example` usw.; versteckte
-Dateien unter Windows im Explorer über Ansicht → Ausgeblendete Elemente
-einblenden).
-
-Danach einen **Token** für dein Repo erstellen: GitHub → Settings →
-Developer settings → Personal access tokens → **Fine-grained tokens** →
-*Generate new token*.
-
-- Repository access: *Only select repositories* → dein neues Repo
-- Permissions → Repository permissions → **Contents: Read and write**
-- Den angezeigten Token kopieren (er wird nur einmal angezeigt).
-
-### Schritt 5: Repo in die VM holen und Einrichtung starten
-
-In der VM:
+### Schritt 4: Vorlage holen und einrichten
 
 ```
-git clone https://github.com/<DEIN-NAME>/<DEIN-REPO>.git mein-projekt
-```
-
-git fragt nach **Username** (dein GitHub-Name) und **Password**: Hier den
-**Token** einfügen, nicht dein GitHub-Passwort. Dann:
-
-```
+git clone https://github.com/DevLunaris/dev-portal-template.git mein-projekt
 cd mein-projekt
 ./bootstrap.sh
 ```
 
+Das Repo ist öffentlich, für den Download brauchst du keine Zugangsdaten.
 `bootstrap.sh` fragt nach:
 
 - **Domain für das Dev-Portal**, z. B. `dev.meinedomain.de`
@@ -170,26 +166,55 @@ Minuten. Am Ende siehst du die Adressen und das Passwort für VS Code.
 Andere Ports gewünscht? Beim ersten Start so aufrufen:
 `PORTAL_PORT=9000 PROD_PORT=9080 ./bootstrap.sh`
 
-### Schritt 6: Token speichern
+Im LAN kannst du jetzt schon testen: `http://<IP-DER-VM>:8000`
+(Dev-Portal) und `http://<IP-DER-VM>:8080` (fertige Website).
 
-```
-git pull
-```
-
-git fragt noch einmal nach Username und Token und **speichert** sie jetzt
-(das hat `bootstrap.sh` eingerichtet). Danach funktionieren `git pull` und
-`git push` ohne Nachfrage, auch im Terminal von VS Code im Browser.
-
-### Schritt 7: Ab- und wieder anmelden
+### Schritt 5: Ab- und wieder anmelden
 
 Einmal `exit` und erneut per `ssh` einloggen. Dann funktioniert `docker`
 ohne `sudo`.
 
-### Schritt 8: Reverse Proxy einrichten und loslegen
+### Schritt 6: Eigenes Repo anlegen und hochladen
 
-Siehe nächster Abschnitt. Im LAN kannst du schon jetzt testen:
-`http://<IP-DER-VM>:8000` (Dev-Portal) und `http://<IP-DER-VM>:8080`
-(fertige Website).
+Damit du deinen Code sichern und versionieren kannst, kommt das Projekt in
+ein eigenes Repo:
+
+1. Auf GitHub ein **neues, leeres, privates Repository** anlegen (ohne
+   README, ohne Lizenz, ohne .gitignore).
+2. Einen **Token** erstellen: GitHub → Settings → Developer settings →
+   Personal access tokens → **Fine-grained tokens** → *Generate new token*.
+   - Repository access: *Only select repositories* → dein neues Repo
+   - Permissions → Repository permissions → **Contents: Read and write**
+   - Den angezeigten Token kopieren (er wird nur einmal angezeigt).
+3. In der VM im Projektordner:
+
+   ```
+   git remote set-url origin https://github.com/<DEIN-NAME>/<DEIN-REPO>.git
+   git push -u origin main
+   ```
+
+   git fragt nach **Username** (dein GitHub-Name) und **Password**: Hier den
+   **Token** einfügen, nicht dein GitHub-Passwort. Er wird gespeichert,
+   danach funktionieren `git pull` und `git push` ohne Nachfrage, auch im
+   Terminal von VS Code im Browser.
+
+Keine Sorge: `docker/.env` mit den Passwörtern wird nicht hochgeladen (steht
+in `.gitignore`).
+
+Lieber ohne die Historie der Vorlage starten? Vor dem Push:
+`rm -rf .git && git init && git add -A && git commit -m "Start"`, danach
+`git remote add origin ...` statt `set-url`.
+
+Spätere Verbesserungen der Vorlage holen (optional): statt `set-url` die
+Vorlage als zweites Remote behalten:
+`git remote rename origin vorlage && git remote add origin <dein-repo>`,
+später `git pull vorlage main`.
+
+### Schritt 7: Reverse Proxy einrichten
+
+Siehe nächster Abschnitt. Danach ist das Dev-Portal unter deiner Domain
+erreichbar. Beim ersten Öffnen von VS Code meldest du dich mit dem
+Passwort aus Schritt 4 an (steht auch in `docker/.env`).
 
 ## Reverse Proxy einrichten
 
@@ -381,7 +406,7 @@ bootstrap.sh            richtet die VM ein und startet alles
 
 | Problem | Lösung |
 |---|---|
-| `permission denied` bei `docker` | Ab- und wieder anmelden (Schritt 7) |
+| `permission denied` bei `docker` | Ab- und wieder anmelden (Schritt 5) |
 | Vorschau zeigt „Blocked request. This host is not allowed“ | `DEV_DOMAIN` in `docker/.env` prüfen, dann `cd docker && docker compose up -d` |
 | Hot Reload geht nicht (Seite lädt, Änderungen kommen nicht an) | Websockets im Reverse Proxy erlauben. Notfalls `HMR_CLIENT_PORT=443` in `docker/.env` setzen und `docker compose up -d` |
 | `/api/health` meldet Datenbank nicht erreichbar | `cd docker && docker compose ps` (db muss „healthy“ sein), `docker compose logs db` |

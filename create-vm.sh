@@ -226,5 +226,6 @@ Nächste Schritte (siehe README):
   1. Im Router für die MAC-Adresse eine feste IP reservieren (bei DHCP).
   2. Einloggen:  ssh ${SSH_LOGIN_OPT}$CIUSER@${IP:-<IP>}
   3. In der VM:  sudo apt-get update && sudo apt-get install -y git
-                 git clone <dein Repo> && cd <Ordner> && ./bootstrap.sh
+                 git clone https://github.com/DevLunaris/dev-portal-template.git mein-projekt
+                 cd mein-projekt && ./bootstrap.sh
 DONE
