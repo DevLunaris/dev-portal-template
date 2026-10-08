@@ -1,0 +1,16 @@
+{
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "[php]": {
+    "editor.defaultFormatter": "bmewburn.vscode-intelephense-client"
+  },
+  "prettier.requireConfig": true,
+  "eslint.workingDirectories": ["./frontend"],
+  "eslint.validate": ["javascript", "vue"],
+  "files.eol": "\n",
+  "search.exclude": {
+    "**/node_modules": true,
+    "vendor/**": true,
+    "frontend/dist/**": true,
+    "writable/**": true
+  }
+}

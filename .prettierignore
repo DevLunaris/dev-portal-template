@@ -1,0 +1,7 @@
+vendor/
+writable/
+public/
+frontend/dist/
+node_modules/
+composer.lock
+package-lock.json

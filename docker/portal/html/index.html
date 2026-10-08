@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dev-Portal</title>
+  <script src="/portal-config.js"></script>
+  <style>
+    html, body { height: 100%; margin: 0; }
+    body { display: flex; flex-direction: column; font: 14px system-ui, sans-serif; }
+    header { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; padding: 6px 8px; border-bottom: 1px solid #ccc; background: #f4f4f4; }
+    header .group { display: flex; gap: 4px; align-items: center; }
+    header .push { margin-left: auto; }
+    button, select, input { font: inherit; }
+    button.active { font-weight: bold; background: #ddd; }
+    #path { width: 14em; }
+    body:not(.with-preview) .preview-only { display: none; }
+    body.header-collapsed header { display: none; }
+    #expand { display: none; position: fixed; top: 4px; right: 4px; z-index: 10; opacity: .6; }
+    #expand:hover { opacity: 1; }
+    body.header-collapsed #expand { display: block; }
+    main { flex: 1; display: flex; min-height: 0; }
+    main > section { display: none; flex: 1; min-width: 0; }
+    main[data-tab="preview"] #pane-preview,
+    main[data-tab="split"] #pane-code,
+    main[data-tab="split"] #pane-preview,
+    main[data-tab="db"] #pane-db,
+    main[data-tab="mail"] #pane-mail { display: flex; }
+    main[data-tab="split"] #pane-code { flex: 0 0 var(--split, 50%); }
+    #splitter { display: none; flex: 0 0 6px; cursor: col-resize; background: #ccc; touch-action: none; }
+    #splitter:hover, body.dragging #splitter { background: #999; }
+    main[data-tab="split"] #splitter { display: block; }
+    body.dragging { cursor: col-resize; user-select: none; }
+    body.dragging iframe { pointer-events: none; }
+    #pane-preview { justify-content: center; overflow: auto; background: #e8e8e8; }
+    .frame-wrap { flex: 0 0 auto; width: 100%; height: 100%; background: #fff; }
+    iframe { display: block; width: 100%; height: 100%; border: 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <nav class="group" id="tabs">
+      <button type="button" data-tab="preview">Vorschau</button>
+      <button type="button" data-tab="split">Code + Vorschau</button>
+      <button type="button" data-tab="db">Datenbank</button>
+      <button type="button" data-tab="mail">Mails</button>
+    </nav>
+
+    <form class="group preview-only" id="route-form">
+      <select id="routes" title="Routen der App"><option value="/">/</option></select>
+      <input id="path" type="text" placeholder="/pfad" title="Beliebiger Pfad der App">
+      <button type="submit">Öffnen</button>
+    </form>
+
+    <div class="group preview-only" id="devices">
+      <button type="button" data-device="mobile" title="375 px">Handy</button>
+      <button type="button" data-device="tablet" title="768 px">Tablet</button>
+      <button type="button" data-device="desktop" title="volle Breite">Desktop</button>
+    </div>
+
+    <div class="group">
+      <button type="button" id="reload">Neu laden</button>
+      <button type="button" id="newtab">In neuem Tab öffnen</button>
+      <a id="prod-link" href="#" target="_blank" rel="noopener">Fertige Website</a>
+    </div>
+
+    <button type="button" class="push" id="collapse" title="Leiste einklappen">▲</button>
+  </header>
+  <button type="button" id="expand" title="Leiste ausklappen">▼</button>
+
+  <main id="main">
+    <section id="pane-code"><iframe data-src="/code/" title="VS Code"></iframe></section>
+    <div id="splitter" title="Ziehen zum Verschieben, Doppelklick: Mitte"></div>
+    <section id="pane-preview"><div class="frame-wrap" id="frame-wrap"><iframe id="preview" title="Vorschau"></iframe></div></section>
+    <section id="pane-db"><iframe data-src="/pma/" title="phpMyAdmin"></iframe></section>
+    <section id="pane-mail"><iframe data-src="/mail/" title="Mailpit"></iframe></section>
+  </main>
+
+  <script>
+    const PREVIEW_BASE = '/preview'
+    const STORAGE_KEY = 'dev-portal'
+    const WIDTHS = { mobile: '375px', tablet: '768px', desktop: '100%' }
+
+    const main = document.getElementById('main')
+    const preview = document.getElementById('preview')
+    const frameWrap = document.getElementById('frame-wrap')
+    const routeSelect = document.getElementById('routes')
+    const pathInput = document.getElementById('path')
+    const splitter = document.getElementById('splitter')
+
+    const state = { tab: 'preview', route: '/', device: 'desktop', split: 50, headerCollapsed: false }
+    try { Object.assign(state, JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}) } catch {}
+
+    function save() {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)) } catch {}
+    }
+
+    function normalize(route) {
+      route = (route || '/').trim()
+      return route.startsWith('/') ? route : '/' + route
+    }
+
+    function showRoute(route) {
+      state.route = route
+      save()
+      pathInput.value = route
+      const option = [...routeSelect.options].find((o) => o.value === route)
+      routeSelect.value = option ? route : ''
+    }
+
+    // Vue-Router der App im iframe (gleicher Origin, Vue hängt die App an #app)
+    function previewRouter() {
+      try {
+        const app = preview.contentDocument.querySelector('#app').__vue_app__
+        return app.config.globalProperties.$router || null
+      } catch {
+        return null
+      }
+    }
+
+    function navigate(route) {
+      route = normalize(route)
+      showRoute(route)
+      const router = previewRouter()
+      if (router) router.push(route).catch(() => {})
+      else preview.src = PREVIEW_BASE + route
+    }
+
+    function fillRoutes(router) {
+      // Routen mit Parametern (z. B. /:id) lassen sich über das Freitextfeld öffnen
+      const paths = router.getRoutes().map((r) => r.path).filter((p) => !p.includes(':'))
+      const unique = [...new Set(paths)].sort()
+      routeSelect.replaceChildren(new Option('– Route –', ''), ...unique.map((p) => new Option(p, p)))
+      showRoute(state.route)
+    }
+
+    // Nach jedem Laden der Vorschau Routen auslesen und Navigation mitverfolgen
+    preview.addEventListener('load', () => {
+      try {
+        const path = preview.contentWindow.location.pathname
+        if (path.startsWith(PREVIEW_BASE)) showRoute(path.slice(PREVIEW_BASE.length) || '/')
+      } catch {}
+
+      let tries = 0
+      const timer = setInterval(() => {
+        const router = previewRouter()
+        if (router || ++tries > 50) clearInterval(timer)
+        if (!router) return
+        fillRoutes(router)
+        router.afterEach((to) => showRoute(to.fullPath))
+      }, 100)
+    })
+
+    function activeFrame() {
+      if (state.tab === 'preview' || state.tab === 'split') return preview
+      return document.querySelector(`#pane-${state.tab} iframe`)
+    }
+
+    function setTab(tab) {
+      state.tab = tab
+      save()
+      main.dataset.tab = tab
+      document.body.classList.toggle('with-preview', tab === 'preview' || tab === 'split')
+      document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab))
+
+      // iframes erst laden, wenn sie zum ersten Mal sichtbar sind
+      main.querySelectorAll('section').forEach((section) => {
+        const frame = section.querySelector('iframe')
+        if (getComputedStyle(section).display === 'none' || frame.getAttribute('src')) return
+        frame.src = frame === preview ? PREVIEW_BASE + normalize(state.route) : frame.dataset.src
+      })
+    }
+
+    function setDevice(device) {
+      state.device = WIDTHS[device] ? device : 'desktop'
+      save()
+      frameWrap.style.width = WIDTHS[state.device]
+      document.querySelectorAll('#devices button').forEach((b) => b.classList.toggle('active', b.dataset.device === state.device))
+    }
+
+    // Trennlinie zwischen VS Code und Vorschau (Breite von VS Code in Prozent)
+    function setSplit(percent) {
+      state.split = Math.min(85, Math.max(15, Number(percent) || 50))
+      main.style.setProperty('--split', state.split + '%')
+    }
+
+    splitter.addEventListener('pointerdown', (e) => {
+      splitter.setPointerCapture(e.pointerId)
+      document.body.classList.add('dragging')
+    })
+    splitter.addEventListener('pointermove', (e) => {
+      if (!document.body.classList.contains('dragging')) return
+      const rect = main.getBoundingClientRect()
+      setSplit(((e.clientX - rect.left) / rect.width) * 100)
+    })
+    const endDrag = () => {
+      if (!document.body.classList.contains('dragging')) return
+      document.body.classList.remove('dragging')
+      save()
+    }
+    splitter.addEventListener('pointerup', endDrag)
+    splitter.addEventListener('pointercancel', endDrag)
+    splitter.addEventListener('dblclick', () => { setSplit(50); save() })
+
+    function setHeaderCollapsed(collapsed) {
+      state.headerCollapsed = collapsed
+      save()
+      document.body.classList.toggle('header-collapsed', collapsed)
+    }
+
+    document.getElementById('collapse').addEventListener('click', () => setHeaderCollapsed(true))
+    document.getElementById('expand').addEventListener('click', () => setHeaderCollapsed(false))
+
+    document.getElementById('tabs').addEventListener('click', (e) => {
+      if (e.target.dataset.tab) setTab(e.target.dataset.tab)
+    })
+    document.getElementById('devices').addEventListener('click', (e) => {
+      if (e.target.dataset.device) setDevice(e.target.dataset.device)
+    })
+    routeSelect.addEventListener('change', () => {
+      if (routeSelect.value) navigate(routeSelect.value)
+    })
+    document.getElementById('route-form').addEventListener('submit', (e) => {
+      e.preventDefault()
+      navigate(pathInput.value)
+    })
+    document.getElementById('reload').addEventListener('click', () => {
+      const frame = activeFrame()
+      try { frame.contentWindow.location.reload() } catch { frame.src = frame.src }
+    })
+    document.getElementById('newtab').addEventListener('click', () => {
+      const frame = activeFrame()
+      let url = frame === preview ? PREVIEW_BASE + normalize(state.route) : frame.dataset.src
+      try {
+        const href = frame.contentWindow.location.href
+        if (!href.startsWith('about:')) url = href
+      } catch {}
+      window.open(url, '_blank', 'noopener')
+    })
+
+    const prodLink = document.getElementById('prod-link')
+    if (window.PORTAL_CONFIG?.prodUrl) prodLink.href = window.PORTAL_CONFIG.prodUrl
+    else prodLink.hidden = true
+
+    pathInput.value = normalize(state.route)
+    setSplit(state.split)
+    setHeaderCollapsed(state.headerCollapsed)
+    setDevice(state.device)
+    setTab(state.tab)
+  </script>
+</body>
+</html>

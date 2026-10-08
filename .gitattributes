@@ -1,0 +1,6 @@
+# Shell-Skripte und Dateien für die Linux-Container immer mit LF,
+# auch wenn das Repo unter Windows ausgecheckt wird
+*.sh             text eol=lf
+Dockerfile       text eol=lf
+*.template       text eol=lf
+docker/**        text eol=lf

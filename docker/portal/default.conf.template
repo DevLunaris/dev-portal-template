@@ -1,0 +1,102 @@
+# Dev-Portal: alle Werkzeuge unter einer Adresse (gleicher Origin),
+# damit sich die Startseite sie per iframe einbetten lässt.
+#
+#   /          Portal-Startseite (html/index.html)
+#   /preview/  App mit Hot Reload (Vite)
+#   /api/      CodeIgniter-API (über den Vite-Proxy, wie lokal)
+#   /code/     code-server
+#   /pma/      phpMyAdmin
+#   /mail/     Mailpit
+#
+# ${PROD_URL} wird beim Start durch envsubst ersetzt (nginx-Image).
+
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+# Pangolin liefert X-Forwarded-Proto: https, im LAN gilt das eigene Schema
+map $http_x_forwarded_proto $forwarded_proto {
+    default $http_x_forwarded_proto;
+    ''      $scheme;
+}
+
+# Präfix für Dienste entfernen, die nichts von ihrem Unterpfad wissen
+map $request_uri $code_uri {
+    ~^/code(?<rest>/.*)$ $rest;
+    default /;
+}
+map $request_uri $pma_uri {
+    ~^/pma(?<rest>/.*)$ $rest;
+    default /;
+}
+
+server {
+    listen 80;
+    server_name _;
+
+    client_max_body_size 64m;
+    absolute_redirect off;
+
+    # Docker-DNS zur Laufzeit fragen, damit nginx auch startet, wenn ein
+    # Dienst gerade nicht läuft
+    resolver 127.0.0.11 valid=10s ipv6=off;
+
+    proxy_http_version 1.1;
+    proxy_set_header Host $http_host;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection $connection_upgrade;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $forwarded_proto;
+    proxy_set_header X-Forwarded-Host $http_host;
+    proxy_read_timeout 1h;
+    proxy_send_timeout 1h;
+
+    # Framing-Sperren der Werkzeuge ersetzen: Einbetten nur im gleichen Origin
+    proxy_hide_header X-Frame-Options;
+    add_header X-Frame-Options SAMEORIGIN always;
+
+    root /usr/share/nginx/html;
+
+    location = / {
+        try_files /index.html =404;
+        expires -1;
+    }
+
+    location = /portal-config.js {
+        default_type application/javascript;
+        expires -1;
+        return 200 "window.PORTAL_CONFIG = { prodUrl: '${PROD_URL}' };\n";
+    }
+
+    location = /preview { return 301 /preview/; }
+    location = /code    { return 301 /code/; }
+    location = /pma     { return 301 /pma/; }
+    location = /mail    { return 301 /mail/; }
+
+    location /preview/ {
+        set $upstream vite:5173;
+        proxy_pass http://$upstream;
+    }
+
+    location /api/ {
+        set $upstream vite:5173;
+        proxy_pass http://$upstream;
+    }
+
+    location /code/ {
+        set $upstream code-server:8080;
+        proxy_pass http://$upstream$code_uri;
+    }
+
+    location /pma/ {
+        set $upstream phpmyadmin:80;
+        proxy_pass http://$upstream$pma_uri;
+    }
+
+    location /mail/ {
+        set $upstream mailpit:8025;
+        proxy_pass http://$upstream;
+    }
+}

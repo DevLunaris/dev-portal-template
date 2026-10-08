@@ -1,0 +1,164 @@
+# Entwicklungs- und Hosting-Umgebung
+#
+#   cd docker
+#   docker compose up -d --build
+#
+# Alle Werte und Passwörter stehen in docker/.env (Vorlage: .env.example,
+# wird von ../bootstrap.sh angelegt). Der Name des Compose-Projekts kommt aus
+# COMPOSE_PROJECT_NAME in docker/.env.
+
+# Konfiguration für CodeIgniter (app, code-server, prod). CodeIgniter liest
+# Variablen wie database_default_hostname als database.default.hostname.
+x-ci-env: &ci-env
+  database_default_hostname: db
+  database_default_database: ${DB_DATABASE}
+  database_default_username: ${DB_USERNAME}
+  database_default_password: ${DB_PASSWORD}
+  email_protocol: smtp
+  email_SMTPHost: mailpit
+  email_SMTPPort: "1025"
+  email_SMTPCrypto: ""
+  email_fromEmail: ${MAIL_FROM}
+  app_appTimezone: ${TZ:-Europe/Berlin}
+  TZ: ${TZ:-Europe/Berlin}
+
+# UID/GID des Benutzers in der VM, dem die Projektdateien gehören
+x-user-args: &user-args
+  UID: ${DEV_UID:-1000}
+  GID: ${DEV_GID:-1000}
+
+services:
+  app:
+    build:
+      context: ./app
+      args: *user-args
+    image: ${COMPOSE_PROJECT_NAME:-devportal}-app-dev
+    restart: unless-stopped
+    user: "${DEV_UID:-1000}:${DEV_GID:-1000}"
+    environment:
+      <<: *ci-env
+      CI_ENVIRONMENT: development
+      app_baseURL: https://${DEV_DOMAIN}/
+    volumes:
+      - ..:/var/www/html
+    depends_on:
+      db:
+        condition: service_healthy
+
+  vite:
+    image: node:22-slim
+    restart: unless-stopped
+    user: "${DEV_UID:-1000}:${DEV_GID:-1000}"
+    working_dir: /app/frontend
+    command: sh -c "npm install --no-audit --no-fund && exec npm run dev -- --host 0.0.0.0 --port 5173 --strictPort"
+    environment:
+      DEV_BASE: /preview/
+      DEV_API_TARGET: http://app:8080
+      DEV_ALLOWED_HOSTS: ${DEV_DOMAIN}
+      DEV_HMR_CLIENT_PORT: ${HMR_CLIENT_PORT:-}
+      HOME: /tmp
+      npm_config_update_notifier: "false"
+      TZ: ${TZ:-Europe/Berlin}
+    volumes:
+      - ..:/app
+
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE}
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      TZ: ${TZ:-Europe/Berlin}
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  phpmyadmin:
+    image: phpmyadmin:5
+    restart: unless-stopped
+    environment:
+      PMA_HOST: db
+      UPLOAD_LIMIT: 64M
+      # Konfigurationsspeicher (Lesezeichen, Verlauf, Designer usw.),
+      # einrichten mit ./setup-pma.sh (macht bootstrap.sh automatisch)
+      PMA_PMADB: phpmyadmin
+      PMA_CONTROLUSER: pma
+      PMA_CONTROLPASS: ${PMA_CONTROL_PASSWORD}
+      TZ: ${TZ:-Europe/Berlin}
+    volumes:
+      - ./phpmyadmin/config.user.inc.php:/etc/phpmyadmin/config.user.inc.php:ro
+    depends_on:
+      - db
+
+  mailpit:
+    image: axllent/mailpit
+    restart: unless-stopped
+    environment:
+      MP_WEBROOT: /mail/
+      MP_DATABASE: /data/mailpit.db
+      MP_SMTP_AUTH_ACCEPT_ANY: "true"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "true"
+      TZ: ${TZ:-Europe/Berlin}
+    volumes:
+      - mailpit-data:/data
+
+  code-server:
+    build:
+      context: ./code-server
+      args: *user-args
+    image: ${COMPOSE_PROJECT_NAME:-devportal}-code-server
+    restart: unless-stopped
+    environment:
+      <<: *ci-env
+      CI_ENVIRONMENT: development
+      app_baseURL: https://${DEV_DOMAIN}/
+      PASSWORD: ${CODE_SERVER_PASSWORD}
+    volumes:
+      - code-server-home:/home/dev
+      - ..:/home/dev/project
+      # git-Konfiguration und Zugangsdaten des Benutzers in der VM
+      - ${GIT_CONFIG_DIR}:/home/dev/.config/git
+
+  portal:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "${PORTAL_PORT:-8000}:80"
+    environment:
+      PROD_URL: https://${PROD_DOMAIN}
+    volumes:
+      - ./portal/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./portal/html:/usr/share/nginx/html:ro
+
+  # Fertige Website: gebautes Image aus dem Dockerfile im Projekt-Root.
+  # Neu bauen und starten mit ./deploy-prod.sh
+  prod:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: ${COMPOSE_PROJECT_NAME:-devportal}-prod
+    restart: unless-stopped
+    ports:
+      - "${PROD_PORT:-8080}:80"
+    environment:
+      <<: *ci-env
+      CI_ENVIRONMENT: production
+      app_baseURL: https://${PROD_DOMAIN}/
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db-data:
+  mailpit-data:
+  code-server-home:
