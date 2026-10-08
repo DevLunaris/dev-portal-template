@@ -14,6 +14,8 @@ in einer VM in Docker und ist im Browser erreichbar:
 - **Fertige Website** (z. B. `https://app.meinedomain.de`): gebaute Version
   der App, wie sie später echte Besucher sehen
 
+![Dev-Portal mit VS Code links und der App in Handy-Breite rechts](docs/images/portal-code-vorschau.png)
+
 Die Vorlage enthält nur das Grundgerüst: eine API-Route `/api/health` und eine
 Vue-Startseite, die anzeigt, ob API und Datenbank erreichbar sind. Den Rest
 baust du selbst.
@@ -59,22 +61,12 @@ App-Domain → `VM-IP:8080`. Ausführlich: siehe unten.
 
 ## Wie das Ganze aufgebaut ist
 
-```
-Browser ──HTTPS──> Reverse Proxy ──HTTP──> VM (Debian 13, Docker)
-                   (Pangolin, Caddy,        │
-                    Nginx Proxy Manager…)   ├─ Port 8000: Dev-Portal (nginx)
-                                            │     /          Portal-Startseite
-                                            │     /preview/  App mit Hot Reload (Vite)
-                                            │     /api/      CodeIgniter-API
-                                            │     /code/     VS Code (code-server)
-                                            │     /pma/      phpMyAdmin
-                                            │     /mail/     Mailpit
-                                            │
-                                            └─ Port 8080: fertige Website
-                                                  (Vue-Build + CodeIgniter in einem Container)
+![Architektur: Browser, Reverse Proxy, VM mit Dev-Portal (Port 8000) und fertiger Website (Port 8080), gemeinsame Datenbank und Mailpit](docs/images/architektur.drawio.svg)
 
-Beide nutzen dieselbe MySQL-Datenbank und dasselbe Mailpit.
-```
+Das Dev-Portal liefert alle Werkzeuge unter einer Adresse aus: `/` (Portal),
+`/preview/` (App mit Hot Reload), `/api/` (CodeIgniter), `/code/`
+(VS Code), `/pma/` (phpMyAdmin) und `/mail/` (Mailpit). Die fertige Website
+läuft getrennt davon auf Port 8080.
 
 Frontend und API laufen immer unter derselben Adresse. Vue ruft die API über
 `/api/...` auf, dadurch sind keine CORS-Einstellungen nötig.
@@ -308,6 +300,22 @@ Für `app.meinedomain.de` genauso, aber mit Port `8080` und ohne `auth_basic`.
 Daneben: Routen der App, Handy/Tablet/Desktop-Breite, Neu laden, In neuem
 Tab öffnen, Link zur fertigen Website, ▲ klappt die Leiste ein.
 
+**Hot Reload:** Datei in VS Code speichern, die Vorschau zeigt die Änderung
+sofort, ohne Neuladen:
+
+![Hot Reload: Überschrift in VS Code ändern, Vorschau aktualisiert sich sofort](docs/images/hot-reload.gif)
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/images/portal-vorschau.png" alt="Tab Vorschau in Desktop-Breite"><br><sub>Vorschau in Desktop-Breite</sub></td>
+    <td width="50%"><img src="docs/images/portal-handy.png" alt="Tab Vorschau in Handy-Breite"><br><sub>Vorschau in Handy-Breite (375 px)</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/images/phpmyadmin.png" alt="Tab Datenbank mit phpMyAdmin"><br><sub>Datenbank: phpMyAdmin</sub></td>
+    <td width="50%"><img src="docs/images/mailpit.png" alt="Tab Mails mit Mailpit"><br><sub>Mails: Mailpit fängt alle Mails der App ab</sub></td>
+  </tr>
+</table>
+
 **Im Terminal von VS Code** (Menü → Terminal → New Terminal):
 
 ```
@@ -382,6 +390,8 @@ frontend/               Vue-App (Vite)
   src/lib/gridstack.js  Gridstack-Import mit Anwendungsbeispiel
 docker/                 Docker-Umgebung, Dev-Portal, Skripte (siehe docker/README.md)
   .env.example          Vorlage für docker/.env (alle Einstellungen der VM)
+docs/images/            Bilder für diese README (architektur.drawio.svg lässt sich
+                        mit der Draw.io-Erweiterung in VS Code bearbeiten)
 Dockerfile              Produktiv-Image (Vue-Build + CodeIgniter)
 create-vm.sh            legt die VM auf Proxmox an
 bootstrap.sh            richtet die VM ein und startet alles
